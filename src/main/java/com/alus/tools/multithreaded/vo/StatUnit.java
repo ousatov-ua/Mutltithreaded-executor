@@ -6,7 +6,7 @@ import lombok.Value;
 /**
  * Contains statistics information
  *
- * @author Oleksii Usatov,ff
+ * @author Oleksii Usatov
  */
 @Value
 @Builder
