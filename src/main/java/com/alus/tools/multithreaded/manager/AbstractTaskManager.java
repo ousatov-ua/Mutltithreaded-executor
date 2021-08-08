@@ -1,4 +1,4 @@
-package com.alus.tools.multithreaded.processor;
+package com.alus.tools.multithreaded.manager;
 
 import com.alus.tools.multithreaded.vo.StatUnit;
 import com.alus.tools.multithreaded.vo.WorkUnit;
