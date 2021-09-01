@@ -5,6 +5,8 @@ import com.alus.tools.multithreaded.vo.WorkUnit;
 import com.alus.tools.multithreaded.vo.config.Config;
 import lombok.extern.slf4j.Slf4j;
 
+import java.io.Closeable;
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
@@ -26,14 +28,14 @@ import java.util.function.Function;
  * @author Oleksii Usatov
  */
 @Slf4j
-public class AbstractTaskManager<T extends WorkUnit, R> implements Runnable {
-
+public class AbstractTaskManager<T extends WorkUnit, R> implements Runnable, Closeable {
     private final Config config;
     private final LinkedBlockingDeque<T> workUnitsDeque;
     private final LimitedQueue<Runnable> tasksDeque;
     private final Function<T, R> function;
     private final ExecutorService processorsPool;
     private final ScheduledExecutorService statusExecutor;
+    private final ExecutorService taskManagerExecutor;
     private final AtomicLong totalUnitsOfWorkSubmitted = new AtomicLong();
     private final Map<String, StatUnit> recordsSubmitted = new LinkedHashMap<>();
     private volatile boolean finished;
@@ -48,10 +50,11 @@ public class AbstractTaskManager<T extends WorkUnit, R> implements Runnable {
         this.tasksDeque = new LimitedQueue<>(tasksDequeSize);
         this.processorsPool = new ThreadPoolExecutor(nThreads, nThreads, 0L, TimeUnit.MILLISECONDS, tasksDeque);
         this.statusExecutor = Executors.newScheduledThreadPool(1);
-        statusExecutor.scheduleAtFixedRate(() -> {
-            log.info("Total values submitted={}, workUnitsDeque size={}, tasksDeque size={}", totalUnitsOfWorkSubmitted.get(),
-                    workUnitsDeque.size(), tasksDeque.size());
-        }, 1, 1, TimeUnit.MINUTES);
+        statusExecutor.scheduleAtFixedRate(() ->
+                log.info("Total values submitted={}, workUnitsDeque size={}, tasksDeque size={}", totalUnitsOfWorkSubmitted.get(),
+                        workUnitsDeque.size(), tasksDeque.size()), 1, 1, TimeUnit.MINUTES);
+        this.taskManagerExecutor = Executors.newFixedThreadPool(1);
+        this.taskManagerExecutor.execute(this);
     }
 
     @Override
@@ -118,37 +121,28 @@ public class AbstractTaskManager<T extends WorkUnit, R> implements Runnable {
     }
 
     /**
-     * Put task to queue
+     * Submit task
      *
      * @param workUnit T
      * @throws InterruptedException exception
      */
-    public void put(T workUnit) throws InterruptedException {
+    public void submit(T workUnit) throws InterruptedException {
         workUnitsDeque.put(workUnit);
     }
 
     /**
-     * Put the last value to the queue and wait all sumitted tasks finished
+     * Put the last value to the queue and wait all submitted tasks finished
      *
      * @param lastWorkUnit last unit of work
      */
-    public void waitForFinish(T lastWorkUnit) {
+    public void wait(T lastWorkUnit) {
         try {
             workUnitsDeque.put(lastWorkUnit);
             while (!isFinished()) {
                 log.info("Waiting for all tasks left the queue");
                 TimeUnit.SECONDS.sleep(10);
             }
-            log.info("All tasks left the queue");
-            log.info("Waiting for all submitted tasks finished");
-            processorsPool.shutdown();
-            var terminated = processorsPool.awaitTermination(
-                    config.getWaitTimeForAllTasksFinishedMinute(), TimeUnit.MINUTES);
-            log.info("ProcessorsPool is terminated={}", terminated);
-            log.info("All submitted tasks finished");
-            statusExecutor.shutdownNow();
-            terminated = statusExecutor.awaitTermination(1, TimeUnit.MINUTES);
-            log.info("StatusExecutor is finished={}", terminated);
+            log.info("All tasks are executed");
         } catch (Exception ine) {
             log.error("Exception during finishing", ine);
         }
@@ -161,6 +155,28 @@ public class AbstractTaskManager<T extends WorkUnit, R> implements Runnable {
         recordsSubmitted.forEach((key, value) -> log.info("Statistics: total={}, in error={} records for type={}",
                 value.getTotalCount(), value.getTotalErrorCount(), key));
         log.info("Statistics: Total values submitted={}", totalUnitsOfWorkSubmitted.get());
+    }
+
+    @Override
+    public void close() throws IOException {
+        try {
+            log.info("Waiting for all submitted tasks finished");
+            processorsPool.shutdown();
+            var terminated = processorsPool.awaitTermination(
+                    config.getWaitTimeForAllTasksFinishedMinute(), TimeUnit.MINUTES);
+            log.info("ProcessorsPool is terminated={}", terminated);
+            log.info("All submitted tasks finished");
+            statusExecutor.shutdownNow();
+            terminated = statusExecutor.awaitTermination(1, TimeUnit.MINUTES);
+            log.info("StatusExecutor is finished={}", terminated);
+            log.info("All tasks left the queue");
+            log.info("Shutdown taskManager...");
+            taskManagerExecutor.shutdownNow();
+            terminated = taskManagerExecutor.awaitTermination(1, TimeUnit.MINUTES);
+            log.info("Task manager is terminated={}", terminated);
+        } catch (InterruptedException e) {
+            throw new IOException("Cannot close resources", e);
+        }
     }
 
     /**

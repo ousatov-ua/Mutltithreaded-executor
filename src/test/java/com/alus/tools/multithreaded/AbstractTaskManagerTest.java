@@ -8,9 +8,10 @@ import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -22,6 +23,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  */
 @Slf4j
 public class AbstractTaskManagerTest {
+
+    static class TestTaskManager extends AbstractTaskManager<CustomWorkOfUnit, Result> {
+
+        public TestTaskManager(Config config, Function<CustomWorkOfUnit, Result> function) {
+            super(config, function);
+        }
+
+        @Override
+        protected boolean isInError(Result result) {
+            return result.ok != Boolean.TRUE;
+        }
+    }
 
     @Value
     @Builder
@@ -49,10 +62,7 @@ public class AbstractTaskManagerTest {
     }
 
     @Test
-    public void testManaging() throws InterruptedException {
-
-        // Executor for taskManager
-        final var taskManagerExecutor = Executors.newFixedThreadPool(1);
+    public void testManaging() throws IOException {
 
         // Contain results
         final var proceededUnits = new ConcurrentHashMap<Result, Integer>();
@@ -63,8 +73,8 @@ public class AbstractTaskManagerTest {
                 .waitTimeForAllTasksFinishedMinute(1)
                 .build();
 
-        // Implementation of our TaskManager
-        final var taskManager = new AbstractTaskManager<CustomWorkOfUnit, Result>(config, (t) -> {
+        // Our test function
+        Function<CustomWorkOfUnit, Result> function = t -> {
             log.info("Proceeded {}", t);
             try {
                 if (t.getData() == 3) {
@@ -73,7 +83,7 @@ public class AbstractTaskManagerTest {
                     TimeUnit.SECONDS.sleep(1);
                 }
             } catch (InterruptedException e) {
-                throw new RuntimeException("Exeception during sleep", e);
+                throw new RuntimeException("Exception during sleep", e);
             }
             var result = Result.builder()
                     .ok(t.getData() != 3)
@@ -81,56 +91,45 @@ public class AbstractTaskManagerTest {
                     .build();
             proceededUnits.put(result, t.getData());
             return result;
-        }) {
-
-            // Define if it is in error
-            @Override
-            protected boolean isInError(Result result) {
-                return result.ok != Boolean.TRUE;
-            }
         };
 
-        // Run task manager
-        taskManagerExecutor.execute(taskManager);
+        try (final var taskManager = new TestTaskManager(config, function)) {
 
-        // Total number of tasks
-        final int tasks = 20;
-        for (int i = 0; i < tasks; i++) {
-            var unit = CustomWorkOfUnit.builder()
-                    .data(i)
-                    .build();
-            try {
-                log.info("Put next task = {}", unit);
-                taskManager.put(unit);
-            } catch (InterruptedException ine) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException("Could not put value to queue, unit=" + unit, ine);
+            // Total number of tasks
+            final int tasks = 20;
+            for (int i = 0; i < tasks; i++) {
+                var unit = CustomWorkOfUnit.builder()
+                        .data(i)
+                        .build();
+                try {
+                    log.info("Submit next task = {}", unit);
+                    taskManager.submit(unit);
+                } catch (InterruptedException ine) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException("Could not put value to queue, unit=" + unit, ine);
+                }
             }
+
+            // Notify taskManager that we'll not have more tasks and wait for having all sbmitted proceeded
+            taskManager.wait(CustomWorkOfUnit.LAST_VALUE);
+
+            // Log final statistics
+            taskManager.logStatistics();
+
+            // Assertions
+            assertEquals(tasks, proceededUnits.size());
+            var okResults = proceededUnits.keySet()
+                    .stream()
+                    .filter(Result::isOk)
+                    .collect(Collectors.toList());
+            assertEquals(tasks - 1, okResults.size());
+            var failedResult = proceededUnits.keySet()
+                    .stream()
+                    .filter(r -> !r.isOk())
+                    .collect(Collectors.toList());
+            assertEquals(1, failedResult.size());
+            assertEquals(3, failedResult.get(0).getSourceData());
         }
 
-        // Notify taskManager that we'll not have more tasks and wait for having all sbmitted proceeded
-        taskManager.waitForFinish(CustomWorkOfUnit.LAST_VALUE);
-
-        // Shutdown task manager
-        taskManagerExecutor.shutdown();
-        var terminated = taskManagerExecutor.awaitTermination(10, TimeUnit.SECONDS);
-        log.info("TaskManagerExecutor is terminated={}", terminated);
-
-        // Log final statistics
-        taskManager.logStatistics();
-
-        // Assertions
-        assertEquals(tasks, proceededUnits.size());
-        var okResults = proceededUnits.keySet()
-                .stream()
-                .filter(Result::isOk)
-                .collect(Collectors.toList());
-        assertEquals(tasks - 1, okResults.size());
-        var failedResult = proceededUnits.keySet()
-                .stream()
-                .filter(r -> !r.isOk())
-                .collect(Collectors.toList());
-        assertEquals(1, failedResult.size());
-        assertEquals(3, failedResult.get(0).getSourceData());
     }
 }
