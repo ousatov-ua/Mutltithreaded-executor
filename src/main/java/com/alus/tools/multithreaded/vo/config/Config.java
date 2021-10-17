@@ -13,7 +13,7 @@ import lombok.Value;
 public class Config {
 
     @Builder.Default
-    int valuesDequeSize = 200;
+    int workUnitsDequeSize = 200;
 
     @Builder.Default
     int tasksDequeSize = 200;

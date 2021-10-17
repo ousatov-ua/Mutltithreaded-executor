@@ -68,8 +68,8 @@ public class AbstractTaskManagerTest {
         final var proceededUnits = new ConcurrentHashMap<Result, Integer>();
         final var config = Config.builder()
                 .eventProcessingParallelism(2)
+                .workUnitsDequeSize(10)
                 .tasksDequeSize(10)
-                .valuesDequeSize(10)
                 .waitTimeForAllTasksFinishedMinute(1)
                 .build();
 
@@ -110,7 +110,7 @@ public class AbstractTaskManagerTest {
                 }
             }
 
-            // Notify taskManager that we'll not have more tasks and wait for having all sbmitted proceeded
+            // Notify taskManager that we'll not have more tasks and wait for having all submitted tasks to be proceeded
             taskManager.wait(CustomWorkOfUnit.LAST_VALUE);
 
             // Log final statistics

@@ -43,7 +43,7 @@ public class AbstractTaskManager<T extends WorkUnit, R> implements Runnable, Clo
     public AbstractTaskManager(Config config, Function<T, R> function) {
         this.config = config;
         this.function = function;
-        final int unitsOfWorkDequeSize = config.getValuesDequeSize();
+        final int unitsOfWorkDequeSize = config.getWorkUnitsDequeSize();
         final int tasksDequeSize = config.getTasksDequeSize();
         final var nThreads = config.getEventProcessingParallelism();
         this.workUnitsDeque = new LinkedBlockingDeque<>(unitsOfWorkDequeSize);
