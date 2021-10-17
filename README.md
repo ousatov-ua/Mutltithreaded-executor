@@ -11,16 +11,22 @@ There are two queues:
 Both queues are blocking queues with configurable size. Queue for WorkUnit is limited by `Config.workUnitsDequeSize`
 Queue for tasks is limited by `Config.tasksDequeSize`
 
-Usual use:
+Usual use ('all code' example can be found `AbstractTaskManagerTest`):
 
 ```java
-
-        var taskManager=new AbstractTaskManager<...,...>{...};  // create a taskManager
+        var taskManager = new AbstractTaskManager<...,...>{...};  // create a taskManager
         
-        var workUnit=new WorkUnit(){...};  // create WorkUnit
+        var workUnit = new WorkUnit(){...};  // create WorkUnit
+                
+         while(stopSubmit){
+             taskManager.submit(workUnit)  // submit WorkUnit to taskManager to execute it
+         }
+        
+        // Notify taskManager that we'll not have more tasks and wait for having all submitted tasks to be proceeded
+        taskManager.wait(CustomWorkOfUnit.LAST_VALUE);
 
-        taskManager.submit(workUnit)  // submit WorkUnit to taskManager to execute it
-
+        // Log final statistics
+        taskManager.logStatistics();
 ```
 
 We can submit `workUnits` until size of its dequeue is equal to`Config.workUnitsDequeSize`. The submit process will be
