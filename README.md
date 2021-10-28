@@ -29,7 +29,7 @@ Usual use ('all code' example can be found `AbstractTaskManagerTest`):
         taskManager.logStatistics();
 ```
 
-We can submit `workUnits` until size of its dequeue is equal to`Config.workUnitsDequeSize`. The submit process will be
+We can submit `workUnits` until size of its dequeue is less or equal to`Config.workUnitsDequeSize`. The submit process will be
 blocked until at least one `workOfUnit` will go to `tasksDeque` (so a place for one more `workUnit` is freed).
 
 TaskManager will take `workUnit` from `workUnit's` queue and will submit the task to execute this `workUnit` using his
