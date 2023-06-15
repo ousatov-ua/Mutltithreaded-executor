@@ -5,6 +5,7 @@ import com.alus.tools.multithreaded.vo.WorkUnit;
 import com.alus.tools.multithreaded.vo.config.Config;
 import lombok.extern.slf4j.Slf4j;
 
+import javax.annotation.Nonnull;
 import java.io.Closeable;
 import java.io.IOException;
 import java.util.LinkedHashMap;
@@ -192,7 +193,7 @@ public class AbstractTaskManager<T extends WorkUnit, R> implements Runnable, Clo
         }
 
         @Override
-        public boolean offer(E e) {
+        public boolean offer(@Nonnull E e) {
 
             // Turn offer() and add() into a blocking calls
             try {
