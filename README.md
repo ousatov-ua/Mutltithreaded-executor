@@ -1,7 +1,6 @@
 # Multithreaded executor
 
-The main idea is about processing many tasks in multithreaded mode. We control submit of tasks to have no any
-OutOfMemoryExceptions etc. The TaskManager contains logging for current state of queues etc.
+The primary objective is to manage the processing of numerous tasks concurrently through multithreading. This involves controlling the submission of tasks to prevent potential OutOfMemoryExceptions and other errors. The TaskManager serves as a logging mechanism to monitor the current state of queues and other relevant information.
 
 There are two queues:
 
